@@ -17,10 +17,10 @@ int argc, root = 0;
 char* getHostName();
 char* getWorkingDirectory();
 char* getUserName();
-void clean_up_child_process(int);
+void signalHandler(int);
 void formatPath();
-void typePrompt();
-int readCommand(char***);
+void typePrompt(char**);
+int readCommand(char***, char*);
 int checkCdDestination(char**);
 int cdCommand(char*);
 int isReserved(char**);
@@ -60,11 +60,21 @@ char* getUserName() {
     }
 }
 
-/*  Função que limpa os processos filhos assincronamente */
-void clean_up_child_process(int signal_number) {
-    int child_exit_status;
-    wait(&child_exit_status);
-    status = child_exit_status;
+void signalHandler(int signal) {
+    int childExitStatus;
+
+    switch (signal) {
+        case SIGCHLD:
+            wait(&childExitStatus);
+            status = childExitStatus;
+            break;
+        case SIGINT: // Trata o sinal de CTRL C
+            printf("\n");
+            break;
+        case SIGTSTP: // Trata o sinal de CTRL Z
+            printf("\n");
+            break;
+    }
 }
 
 void formatPath() {
@@ -87,18 +97,20 @@ void formatPath() {
     }
 }
 
-void typePrompt() {
+void typePrompt(char **cmd) {
     printf("%s", myshPath);
+    char *input = (char*) calloc(ARG_MAX, sizeof(char));
+
+    fgets(input, ARG_MAX, stdin);
+    input[strlen(input)-1] = '\0';
+    fflush(stdin);
+
+    *cmd = input;
 }
 
-int readCommand(char ***argv) {
+int readCommand(char ***argv, char *cmd) {
     int i = 0;
     char *token, delim[2] = " ";
-    char *cmd = (char*) calloc(ARG_MAX, sizeof(char));
-
-    fgets(cmd, ARG_MAX, stdin);
-    cmd[strlen(cmd)-1] = '\0';
-    fflush(stdin);
 
     char **argList = (char**) calloc(1, sizeof(char*));
     token = strtok(cmd, delim);
@@ -116,7 +128,6 @@ int readCommand(char ***argv) {
     argList[i] = NULL;
     *argv = argList;
     free(token);
-    free(cmd);
 
     return 0;
 }
@@ -189,24 +200,34 @@ int executeProcess(char **argv) {
 
 int main() {
     int i, exit;
-    char **argv;
-
-    struct sigaction sigchld_action;
-    memset(&sigchld_action, 0, sizeof(sigchld_action));
-    sigchld_action.sa_handler = &clean_up_child_process;
-    sigaction(SIGCHLD, &sigchld_action, NULL);
+    struct sigaction sig;
+    
+    memset(&sig, 0, sizeof(sig));
+    sig.sa_handler = &signalHandler;
+    sigaction(SIGCHLD, &sig, NULL);
+    sigaction(SIGINT, &sig, NULL);
+    sigaction(SIGTSTP, &sig, NULL);
 
     formatPath();
 
     do {
-        typePrompt();
-        readCommand(&argv);
-        exit = executeProcess(argv);
-
-        for (i = 0; i < argc; i++) {
-            free(argv[i]);
+        char **argv, *cmd;
+        argc = 0;
+        typePrompt(&cmd);
+        
+        if (feof(stdin)) { // Trata a entrada de um CTRL D
+            exit = 1;
+            printf("\n");
+        } else {
+            readCommand(&argv, cmd);
+            exit = executeProcess(argv);
+            for (i = 0; i < argc; i++) {
+                free(argv[i]);
+            }
+            free(argv);
         }
-        free(argv);
+
+        free(cmd);
     } while (!exit);
 
     free(cwd);
