@@ -12,7 +12,7 @@
 
 sig_atomic_t status;
 char *cwd, *username, *hostname, myshPath[PATH_MAX];
-int argc, root;
+int argc, root = 0;
 
 char* getHostName();
 char* getWorkingDirectory();
@@ -22,7 +22,7 @@ void formatPath();
 void typePrompt();
 int readCommand(char***);
 int checkCdDestination(char**);
-int cdCommand(char*, int);
+int cdCommand(char*);
 int isReserved(char**);
 int executeProcess(char**);
 
@@ -71,31 +71,20 @@ void formatPath() {
     cwd = getWorkingDirectory();
     hostname = getHostName();
     username = getUserName();
-    char *cwdAux = (char*) calloc(PATH_MAX, sizeof(char));
+    char *cwdAux;
 
-    strcpy(cwdAux, cwd);
-    char *str = strstr(cwdAux, username);
-    strcpy(cwd, &str[strlen(username)]);
+    if (!root) {
+        cwdAux = (char*) calloc(PATH_MAX, sizeof(char));
 
-    sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m~%s\033[0m$ ", 
-        username, 
-        hostname, 
-        cwd
-    );
-
-    free(cwdAux);
-}
-
-void formatRootPath() {
-    cwd = getWorkingDirectory();
-    hostname = getHostName();
-    username = getUserName();
-
-    sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m%s\033[0m$ ", 
-        username, 
-        hostname, 
-        cwd
-    );
+        strcpy(cwdAux, cwd);
+        char *str = strstr(cwdAux, username);
+        strcpy(cwd, &str[strlen(username)]);
+        sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m~%s\033[0m$ ", username, hostname, cwd);
+        
+        free(cwdAux);
+    } else {
+        sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m%s\033[0m$ ", username, hostname, cwd);
+    }
 }
 
 void typePrompt() {
@@ -137,24 +126,20 @@ int checkCdDestination(char **argv) {
 
     if (argv[1] == NULL || !strcmp(argv[1], "~")) {
         root = 0;
-        code = cdCommand(getenv("HOME"), root);
+        code = cdCommand(getenv("HOME"));
     } else if (!strcmp(argv[1], "/")) {
         root = 1;
-        code = cdCommand(argv[1], root);
+        code = cdCommand(argv[1]);
     } else {
-        code = cdCommand(argv[1], root);
+        code = cdCommand(argv[1]);
     }
 
     return code;
 }
 
-int cdCommand(char *dest, int root) {
+int cdCommand(char *dest) {
     if (chdir(dest) == 0) {
-        if (root) {
-            formatRootPath();
-        } else {
-            formatPath();
-        }
+        formatPath();
         return 0;
     } else {
         fprintf(stderr, "Error: %s\n", strerror(errno));
