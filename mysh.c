@@ -12,7 +12,7 @@
 
 sig_atomic_t status;
 char *cwd, *username, *hostname, myshPath[PATH_MAX];
-int argc, root = 0;
+int argc;
 
 char* getHostName();
 char* getWorkingDirectory();
@@ -81,20 +81,19 @@ void formatPath() {
     cwd = getWorkingDirectory();
     hostname = getHostName();
     username = getUserName();
-    char *cwdAux;
-
-    if (!root) {
-        cwdAux = (char*) calloc(PATH_MAX, sizeof(char));
-
-        strcpy(cwdAux, cwd);
-        char *str = strstr(cwdAux, username);
+    char *cwdAux = (char*) calloc(PATH_MAX, sizeof(char));
+    
+    strcpy(cwdAux, cwd);
+    char *str = strstr(cwdAux, username);
+    
+    if (str != NULL) {
         strcpy(cwd, &str[strlen(username)]);
         sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m~%s\033[0m$ ", username, hostname, cwd);
-        
-        free(cwdAux);
     } else {
         sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m%s\033[0m$ ", username, hostname, cwd);
     }
+    
+    free(cwdAux);
 }
 
 void typePrompt(char **cmd) {
@@ -136,10 +135,8 @@ int checkCdDestination(char **argv) {
     int code;
 
     if (argv[1] == NULL || !strcmp(argv[1], "~")) {
-        root = 0;
         code = cdCommand(getenv("HOME"));
     } else if (!strcmp(argv[1], "/")) {
-        root = 1;
         code = cdCommand(argv[1]);
     } else {
         code = cdCommand(argv[1]);
