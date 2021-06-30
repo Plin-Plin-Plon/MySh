@@ -14,6 +14,10 @@ sig_atomic_t status;
 char *cwd, *username, *hostname, myshPath[PATH_MAX];
 int argc;
 
+struct pipeCmd {
+    char **argv;
+};
+
 char* getHostName();
 char* getWorkingDirectory();
 char* getUserName();
@@ -25,7 +29,10 @@ int checkCdDestination(char**);
 int cdCommand(char*);
 int isReserved(char**);
 int executeProcess(char**);
-
+int countPipes(char**);
+struct pipeCmd* createPipeArgs(char**, int);
+int executePipeline(char**, int);
+void freePipeCmd(struct pipeCmd*, int);
 
 char* getHostName() {
     char *hostname = (char*) calloc(MAX_LENGHT, sizeof(char));
@@ -63,7 +70,7 @@ char* getUserName() {
 void signalHandler(int signal) {
     int childExitStatus;
 
-    switch (signal) {
+    switch(signal) {
         case SIGCHLD:
             wait(&childExitStatus);
             status = childExitStatus;
@@ -169,7 +176,7 @@ int isReserved(char **argv) {
 int executeProcess(char **argv) {
     int code;
 
-    if (argv[0] == NULL || (code = isReserved(argv)) == 2) {
+    if ((code = isReserved(argv)) == 2) {
         return 0;
     } else if (code == 1) {
         return 1;
@@ -195,8 +202,127 @@ int executeProcess(char **argv) {
     return 0;
 }
 
+int countPipes(char **argv) {
+    int i, qtdPipes = 0;
+
+    for(i = 0; i < argc; i++) {
+        if (!strcmp(argv[i], "|")) {
+            qtdPipes++;
+            if (argv[i+1] == NULL) {
+                fprintf(stderr, "Error: Empty pipe arguments\n");
+                return -1;
+            }
+        }
+    }
+
+    return qtdPipes;
+}
+
+struct pipeCmd* createPipeArgs(char **argv, int qtdPipes) {
+    int i = 0, j = 0, k;
+    struct pipeCmd *pCmd = (struct pipeCmd*) calloc(qtdPipes + 1, sizeof(struct pipeCmd));
+    
+    for (i = 0; i < qtdPipes + 1; i++) {
+        pCmd[i].argv = (char**) calloc(1, sizeof(char*));
+    }
+
+    for (i = 0; i < qtdPipes + 1; i++) {
+        k = 0;
+        while (argv[j] != NULL && strcmp(argv[j], "|")) {
+            pCmd[i].argv[k] = (char*) calloc(MAX_LENGHT, sizeof(char));
+            strcpy(pCmd[i].argv[k], argv[j]);
+            k++;
+            pCmd[i].argv = (char**) realloc(pCmd[i].argv, sizeof(char*) * (k + 1));
+            j++;
+        }
+        pCmd[i].argv[k] = NULL;
+        j++;
+    }
+
+    return pCmd;
+}
+
+int executePipeline(char **argv, int qtdPipes) {
+    int i, j, k, pipeFds[qtdPipes][2];
+    pid_t child_pid;
+    struct pipeCmd *pCmd = createPipeArgs(argv, qtdPipes);
+
+    // criando todos os pipes
+    for (i = 0; i < qtdPipes; i++) {
+        if (pipe(pipeFds[i])) {
+            fprintf(stderr, "Error: %s\n", strerror(errno));
+            exit(1);
+        }
+    }
+
+    for (i = 0; i < qtdPipes + 1; i++) {
+        if((child_pid = fork()) < 0) {
+            printf("Unable to fork");
+            return 1;
+        }
+
+        if (child_pid == 0) {
+            if (i < qtdPipes) {
+                if (dup2(pipeFds[i][1], STDOUT_FILENO) < 0) {
+                    perror("dup21");
+                    exit(1);
+                }
+            }
+
+            if (i != 0) {
+                if (dup2(pipeFds[i-1][0], STDIN_FILENO) < 0) {
+                    perror("dup2");
+                    exit(1);
+                }
+            }
+
+            for (j = 0; j < qtdPipes; j++) {
+                for (k = 0; k < 2; k++) {
+                    close(pipeFds[j][k]);
+                }
+            }
+ 
+            if(execvp(pCmd[i].argv[0], pCmd[i].argv) < 0) {
+                fprintf(stderr, "Error: %s\n", strerror(errno));
+                exit(1);
+            }
+        }
+    }
+
+    // fechando todos os pipes
+    for (i = 0; i < qtdPipes; i++) {
+        for (j = 0; j < 2; j++) {
+            close(pipeFds[i][j]);
+        }
+    }
+  
+    // espera pelos filhos
+    for (i = 0; i < qtdPipes + 1; i++) {
+        wait(&status);
+    }
+
+    freePipeCmd(pCmd, qtdPipes);
+
+    return 0;
+}
+
+void freePipeCmd(struct pipeCmd* pCmd, int qtdPipes) {
+    int i, j;
+
+    for (i = 0; i < qtdPipes; i++) {
+        j = 0;
+        while (pCmd[i].argv[j] != NULL) {
+            free(pCmd[i].argv[j]);
+            j++;
+        }
+        free(pCmd[i].argv);
+    }
+
+    free(pCmd);
+}
+
 int main() {
-    int i, exit;
+    int i, exit = 0;
     struct sigaction sig;
     
     memset(&sig, 0, sizeof(sig));
@@ -216,8 +342,19 @@ int main() {
             exit = 1;
             printf("\n");
         } else {
+            int qtdPipes;
             readCommand(&argv, cmd);
-            exit = executeProcess(argv);
+
+            if (argv[0] != NULL) {
+                if ((qtdPipes = countPipes(argv)) == 0) {
+                    exit = executeProcess(argv);
+                } else if (qtdPipes < 0) {
+                    exit = 0;
+                } else {
+                    exit = executePipeline(argv, qtdPipes);
+                }
+            }
+
             for (i = 0; i < argc; i++) {
                 free(argv[i]);
             }
