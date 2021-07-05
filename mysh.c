@@ -34,6 +34,13 @@ struct pipeCmd* createPipeArgs(char**, int);
 int executePipeline(char**, int);
 void freePipeCmd(struct pipeCmd*, int);
 
+
+/*  Função que retorna o hostName da máquina em questão
+
+    Caso a função não consiga obter o hostName, é retornado uma mensagem de erro
+    e o programa é abortado com código 1.
+    A ideia é que a shell só consiga de fato executar se houver a obtenção do hostName corretamente
+*/
 char* getHostName() {
     char *hostname = (char*) calloc(MAX_LENGHT, sizeof(char));
     
@@ -45,6 +52,13 @@ char* getHostName() {
     }
 }
 
+
+/*  Função que retorna o diretório atual do espaço de trabalho 
+
+    Caso a função não consiga obter o cwd, é retornado uma mensagem de erro
+    e o programa é abortado com código 1.
+    A ideia é que a shell só consiga de fato executar se houver a obtenção do cwd corretamente
+*/
 char* getWorkingDirectory() {
     char *cwd = (char*) calloc(PATH_MAX, sizeof(char));
     
@@ -56,6 +70,13 @@ char* getWorkingDirectory() {
     }
 }
 
+
+/*  Função que retorna o nome do usuário 
+
+    Caso a função não consiga obter o nome do 
+    usuário, é exibida uma mensagem de erro e o programa
+    aborta com o código 1.
+*/
 char* getUserName() {
     char *username = (char*) calloc(MAX_LENGHT, sizeof(char));
     
@@ -67,6 +88,14 @@ char* getUserName() {
     }
 }
 
+
+/*  Função que trata o sinal de ctrl+C, ctrl+Z e o sinal de controle dos processos filhos 
+
+    Caso receba o sinal de um processo filho 
+    espera o término do processo e sai da função.
+    Caso receba um sinal do comando ctrl+C ou ctrl+Z
+    ignora a linha de comando.
+*/
 void signalHandler(int signal) {
     int childExitStatus;
 
@@ -84,6 +113,12 @@ void signalHandler(int signal) {
     }
 }
 
+
+/*  Formata o caminho da shell
+
+    Formata o caminho levando em consideração
+    se está na pasta root do sistema ou pastas pessoais.
+*/
 void formatPath() {
     cwd = getWorkingDirectory();
     hostname = getHostName();
@@ -103,6 +138,8 @@ void formatPath() {
     free(cwdAux);
 }
 
+
+/*  Printa o path atual e lê a entrada do usuário   */
 void typePrompt(char **cmd) {
     printf("%s", myshPath);
     char *input = (char*) calloc(ARG_MAX, sizeof(char));
@@ -114,6 +151,12 @@ void typePrompt(char **cmd) {
     *cmd = input;
 }
 
+
+/*  Função que cria a lista de argumentos
+
+    Lê a entrada do usuário e cria a lista 
+    de argumentos correspondente baseado do delimitador " ".
+*/
 int readCommand(char ***argv, char *cmd) {
     int i = 0;
     char *token, delim[2] = " ";
@@ -138,6 +181,14 @@ int readCommand(char ***argv, char *cmd) {
     return 0;
 }
 
+
+/*  Função que trata os diferentes destinos para o comando cd 
+
+    Caso seja "cd" ou "cd ~" o programa é redirecionado para
+    a home da pasta pessoal.
+    Caso seja "cd /" o programa é redirecionado para o root.
+    E para outros casos o comando cd segue sua execução normal.
+*/
 int checkCdDestination(char **argv) {
     int code;
 
@@ -152,6 +203,8 @@ int checkCdDestination(char **argv) {
     return code;
 }
 
+
+/*  Função que executa o comando "cd" e formata o path da shell novamente   */
 int cdCommand(char *dest) {
     if (chdir(dest) == 0) {
         formatPath();
@@ -162,6 +215,13 @@ int cdCommand(char *dest) {
     }
 }
 
+
+/*  Função que verifica se o comando inserido pelo usuário é uma palavra reservada
+
+    Caso seja lido "exit" a função retorna 1 para que a função
+    executeProcess retorne 1 e consequentemente finalize o programa.
+    Caso seja lido "cd" a função chama a checkCdDestination e retorna 2.
+*/
 int isReserved(char **argv) {
     if (!strcmp(argv[0], "exit")) {
        return 1;
@@ -173,6 +233,13 @@ int isReserved(char **argv) {
     }
 }
 
+
+/*  Função que executa os comandos inseridos
+
+    Caso o comando inserido não seja um palavra
+    reservada, é criado um processo filho e o
+    comando é executado.
+*/
 int executeProcess(char **argv) {
     int code;
 
@@ -202,6 +269,15 @@ int executeProcess(char **argv) {
     return 0;
 }
 
+
+/*  Função que conta os pipes
+
+    Retorna a quantidade de pipes na 
+    linha de comando.
+    Caso depois de um pipe não exista um 
+    argumento é retornado o valor -1 e sinalizado
+    como erro.
+*/
 int countPipes(char **argv) {
     int i, qtdPipes = 0;
 
@@ -218,6 +294,12 @@ int countPipes(char **argv) {
     return qtdPipes;
 }
 
+
+/*  Função que cria um array de structs de pipes
+
+    Cada struct armazena uma argList diferente referente
+    ao pipe que pertence.
+*/
 struct pipeCmd* createPipeArgs(char **argv, int qtdPipes) {
     int i = 0, j = 0, k;
     struct pipeCmd *pCmd = (struct pipeCmd*) calloc(qtdPipes + 1, sizeof(struct pipeCmd));
@@ -242,6 +324,13 @@ struct pipeCmd* createPipeArgs(char **argv, int qtdPipes) {
     return pCmd;
 }
 
+
+/*  Função que cria e executa os comandos com multiplos pipes
+
+    Cada comando vai ser executado e seu resultado
+    repassado para o próximo pipe. O último pipe
+    ´~e o responsavel por escrever a saída na shell.
+*/
 int executePipeline(char **argv, int qtdPipes) {
     int i, j, k, pipeFds[qtdPipes][2];
     pid_t child_pid;
@@ -262,13 +351,16 @@ int executePipeline(char **argv, int qtdPipes) {
         }
 
         if (child_pid == 0) {
+
+            // Abre a saída de todos os pipes, menos o último
             if (i < qtdPipes) {
                 if (dup2(pipeFds[i][1], STDOUT_FILENO) < 0) {
                     perror("dup21");
                     exit(1);
                 }
             }
-
+            
+            // Abre a entrada de todos os pipes menos o primeiro
             if (i != 0) {
                 if (dup2(pipeFds[i-1][0], STDIN_FILENO) < 0) {
                     perror("dup2");
@@ -276,12 +368,14 @@ int executePipeline(char **argv, int qtdPipes) {
                 }
             }
 
+            // Fecha todos os pipes do processo filho em questão
             for (j = 0; j < qtdPipes; j++) {
                 for (k = 0; k < 2; k++) {
                     close(pipeFds[j][k]);
                 }
             }
- 
+
+            // Executa o comando
             if(execvp(pCmd[i].argv[0], pCmd[i].argv) < 0) {
                 fprintf(stderr, "Error: %s\n", strerror(errno));
                 exit(1);
@@ -289,14 +383,14 @@ int executePipeline(char **argv, int qtdPipes) {
         }
     }
 
-    // fechando todos os pipes
+    // Fechando todos os pipes do processo pai
     for (i = 0; i < qtdPipes; i++) {
         for (j = 0; j < 2; j++) {
             close(pipeFds[i][j]);
         }
     }
   
-    // espera pelos filhos
+    // Espera pelos filhos
     for (i = 0; i < qtdPipes + 1; i++) {
         wait(&status);
     }
@@ -306,6 +400,8 @@ int executePipeline(char **argv, int qtdPipes) {
     return 0;
 }
 
+
+/*  Função que libera a memória do array de pipes e a lista de argumentos correspondente    */
 void freePipeCmd(struct pipeCmd* pCmd, int qtdPipes) {
     int i, j;
 
@@ -320,6 +416,7 @@ void freePipeCmd(struct pipeCmd* pCmd, int qtdPipes) {
 
     free(pCmd);
 }
+
 
 int main() {
     int i, exit = 0;
