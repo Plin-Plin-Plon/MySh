@@ -140,12 +140,16 @@ void formatPath() {
     hostname = getHostName();
     username = getUserName();
     char *cwdAux = (char*) calloc(PATH_MAX, sizeof(char));
+    char *personalDir = (char*) calloc(PATH_MAX, sizeof(char));
     
     strcpy(cwdAux, cwd);
-    char *str = strstr(cwdAux, username);
+    strcpy(personalDir, "/home/");
+    strcat(personalDir, username);
+
+    char *str = strstr(cwdAux, personalDir);
     
     if (str != NULL) {
-        strcpy(cwd, &str[strlen(username)]);
+        strcpy(cwd, &str[strlen(personalDir)]);
         sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m~%s\033[0m$ ", username, hostname, cwd);
     } else {
         sprintf(myshPath, "\033[1;31m[MySh] \033[1;32m%s@%s\033[0m:\033[1;34m%s\033[0m$ ", username, hostname, cwd);
