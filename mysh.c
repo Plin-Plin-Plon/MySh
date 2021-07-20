@@ -1,3 +1,19 @@
+/* Sistemas Operacionais II - Projeto 1 - Integral */
+/* Implementando um processador de comandos do Linux em C */
+
+/********************************************************************************/
+/*                                                                              */
+/*   O Programa têm como objetivo simular um processador de comandos (Shell)    */ 
+/*    do Linux em C, de forma que respeite as exigências dadas no documento     */
+/*    disponibilizado na plataforma Google Classroom pelo docente.              */
+/*                                                                              */
+/********************************************************************************/
+
+/* Grupo:
+/*  Christian Camilo */
+/*  Matheus Missio */
+/*  Paulo César */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
