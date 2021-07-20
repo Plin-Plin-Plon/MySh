@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <limits.h>
 #include <string.h>
 #include <signal.h>
@@ -41,6 +42,7 @@ void signalHandler(int);
 void formatPath();
 void typePrompt(char**);
 int readCommand(char***, char*);
+char* parseQuotedCmd(char*, int*, int, char);
 int checkCdDestination(char**);
 int cdCommand(char*);
 int isReserved(char**);
@@ -141,7 +143,7 @@ void formatPath() {
     username = getUserName();
     char *cwdAux = (char*) calloc(PATH_MAX, sizeof(char));
     char *personalDir = (char*) calloc(PATH_MAX, sizeof(char));
-    
+
     strcpy(cwdAux, cwd);
     strcpy(personalDir, "/home/");
     strcat(personalDir, username);
@@ -178,16 +180,40 @@ void typePrompt(char **cmd) {
     de argumentos correspondente baseado do delimitador " ".
 */
 int readCommand(char ***argv, char *cmd) {
-    int i = 0;
-    char *token, delim[2] = " ";
+    int i = 0, pos, tam = strlen(cmd);
+    char *token, delim[6] = " \'\"", singleQuote[2] = "\'", doubleQuote[2] = "\"";
+    char *cmdAux = (char*) calloc(ARG_MAX, sizeof(char));
+    ptrdiff_t diff;
 
     char **argList = (char**) calloc(1, sizeof(char*));
+    strcpy(cmdAux, cmd);
     token = strtok(cmd, delim);
 
     while (token != NULL) {
         if (strcmp(token, delim)) {
             argList[i] = (char*) calloc(MAX_LENGHT, sizeof(char));
-            strcpy(argList[i++], token);
+
+            diff = token - cmd; // Calcula o índice no comando do usuário pelo token do strtok
+            pos = diff;
+
+            // Analisa a posição de trás, pois o strtok coloca o token após as possíveis aspas
+            if (cmd[pos-1] == singleQuote[0]) { 
+                char* quotedCmd = parseQuotedCmd(cmdAux, &pos, tam, singleQuote[0]);
+                
+                strcpy(argList[i++], quotedCmd);
+                strcpy(cmd, &cmdAux[pos]);
+                tam = strlen(cmd);
+                strtok(cmd, delim); // Recomeça o processo de strtok
+            } else if (cmd[pos-1] == doubleQuote[0]) {
+                char* quotedCmd = parseQuotedCmd(cmdAux, &pos, tam, doubleQuote[0]);
+
+                strcpy(argList[i++], quotedCmd);
+                strcpy(cmd, &cmdAux[pos]);
+                tam = strlen(cmd);
+                strtok(cmd, delim); // Recomeça o processo de strtok
+            } else {
+                strcpy(argList[i++], token);
+            }
             argList = (char**) realloc(argList, sizeof(char*) * (i + 1));
         }
         token = strtok(NULL, delim);
@@ -201,6 +227,26 @@ int readCommand(char ***argv, char *cmd) {
     return 0;
 }
 
+/*  Função que pega e retorna todo o conteúdo do comando 
+    que está entre as aspas duplas ou simples
+
+    Pega caracter por caracter e salva em uma string resultante
+*/
+char* parseQuotedCmd(char* cmd, int *pos, int len, char typeQuote) {
+    char *quotedCmd = (char*) calloc(ARG_MAX, sizeof(char));
+    char ch;
+    int k = 0;
+
+    while ((ch = cmd[*pos]) != typeQuote && *pos < len) {
+        quotedCmd[k] = cmd[*pos];
+        k++;
+        *pos = *pos + 1;
+    }
+
+    quotedCmd[k] = '\0';
+
+    return quotedCmd;
+}
 
 /*  Função que trata os diferentes destinos para o comando cd 
 
@@ -356,7 +402,7 @@ int executePipeline(char **argv, int qtdPipes) {
     pid_t child_pid;
     struct pipeCmd *pCmd = createPipeArgs(argv, qtdPipes);
 
-    // criando todos os pipes
+    // Criando todos os pipes
     for (i = 0; i < qtdPipes; i++) {
         if (pipe(pipeFds[i])) {
             fprintf(stderr, "Error: %s\n", strerror(errno));
